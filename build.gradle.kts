@@ -1,10 +1,11 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "2.0.0-Beta3"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.versions.update)
     application
 }
 
 group = "com.ck"
-version = "1.0-SNAPSHOT"
+version = "1.1"
 
 
 repositories {
@@ -12,7 +13,10 @@ repositories {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
+    compilerOptions {
+        freeCompilerArgs.add("-Xcontext-sensitive-resolution")
+    }
 }
 
 application {

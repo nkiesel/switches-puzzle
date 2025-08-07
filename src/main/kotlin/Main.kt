@@ -1,88 +1,112 @@
-import Position.DOWN
-import Position.UP
 import kotlin.random.Random
 
 enum class Position { UP, DOWN }
-class Switch {
-    var position = if (Random.nextBoolean()) UP else DOWN
-}
 
-class Node<T>(val data: T) {
+class Switch(var position: Position = if (Random.nextBoolean()) UP else DOWN) {
     var left = this
     var right = this
 
-    fun addRight(other: Node<T>) {
+    /**
+     * This inserts a switch into the switch circle to the right of the current switch.
+     */
+    fun addRight(other: Switch) {
         other.right = right
-
         other.left = this
         other.right.left = other
         right = other
     }
+
+    override fun toString() = if (position == UP) "↑" else "↓"
 }
 
 fun main(args: Array<String>) {
     val count = args.firstOrNull()?.toIntOrNull() ?: 100
 
+    val start = Switch()
+    repeat(count - 1) { start.addRight(Switch()) }
+    show(start, count)
+
     for (countSwitches in listOf(::basic, ::enhanced, ::bidirectional)) {
-        val start = setup(count)
-        println(countSwitches(start))
+        // We clone the switch circle for every solution because the solutions are allowed to toggle the switches,
+        // but we want all solutions to start with the same position for every switch.
+        println("${countSwitches.name}: ${countSwitches(clone(start, count))}")
     }
 }
 
-fun setup(count: Int): Node<Switch> {
-    val first = Node(Switch())
-    repeat(count - 1) { first.addRight(Node(Switch())) }
-    var start = first
-    repeat(Random.nextInt(count)) { start = start.right }
-    return start
+/**
+ * This clones a switch circle
+ */
+fun clone(start: Switch, count: Int): Switch {
+    val first = Switch(start.position)
+    var orig = start.right
+    var next = first
+    repeat(count - 1) {
+        next.addRight(Switch(orig.position))
+        next = next.right
+        orig = orig.right
+    }
+    return first
 }
 
-fun basic(start: Node<Switch>): Pair<Int, Int> {
-    start.data.position = UP
-    var node = start
+fun show(start: Switch, count: Int) {
+    var switch = start
+    repeat(count) {
+        print(switch)
+        switch = switch.right
+    }
+    println()
+}
+
+data class Answer(val switches: Int, val steps: Int) {
+    override fun toString() = "$switches switches, took $steps steps"
+}
+
+fun basic(start: Switch): Answer {
+    start.position = UP
+    var switch = start
     var totalSteps = 0
     while (true) {
         var steps = 0
 
         do {
-            node = node.right
+            switch = switch.right
             steps++
-        } while (node.data.position == DOWN)
-        node.data.position = DOWN
+        } while (switch.position == DOWN)
+        switch.position = DOWN
 
-        repeat(steps) { node = node.left }
+        repeat(steps) { switch = switch.left }
         totalSteps += steps * 2
-        if (node.data.position == DOWN) return Pair(steps, totalSteps)
+        if (switch.position == DOWN) return Answer(steps, totalSteps)
     }
 }
 
-fun enhanced(start: Node<Switch>): Pair<Int, Int> {
-    start.data.position = UP
-    var node = start
+fun enhanced(start: Switch): Answer {
+    start.position = UP
+    var switch = start
     var totalSteps = 0
     while (true) {
         var steps = 0
         var toggle = false
         while (true) {
-            node = node.right
+            switch = switch.right
             steps++
-            if (node.data.position == DOWN) {
+            if (switch.position == DOWN) {
                 if (toggle) break
             } else {
-                node.data.position = DOWN
+                switch.position = DOWN
                 toggle = true
             }
         }
 
-        repeat(steps) { node = node.left }
+        repeat(steps) { switch = switch.left }
         totalSteps += steps * 2
-        if (node.data.position == DOWN) return Pair(steps - 1, totalSteps)
+        if (switch.position == DOWN) return Answer(steps - 1, totalSteps)
     }
 }
 
-fun bidirectional(start: Node<Switch>): Pair<Int, Int> {
-    start.data.position = UP
-    var node = start
+fun bidirectional(start: Switch): Answer {
+    start.position = UP
+    var switch = start
     var totalSteps = 0
     var leftDowns = 0
     var rightDowns = 0
@@ -91,19 +115,19 @@ fun bidirectional(start: Node<Switch>): Pair<Int, Int> {
         var toggle = false
         val walkRight = rightDowns <= leftDowns
         while (true) {
-            node = if (walkRight) node.right else node.left
+            switch = if (walkRight) switch.right else switch.left
             steps++
-            if (node.data.position == DOWN) {
+            if (switch.position == DOWN) {
                 if (toggle) break
             } else {
-                node.data.position = DOWN
+                switch.position = DOWN
                 toggle = true
             }
         }
 
-        repeat(steps) { node = if (walkRight) node.left else node.right }
+        repeat(steps) { switch = if (walkRight) switch.left else switch.right }
         if (walkRight) rightDowns = steps else leftDowns = steps
         totalSteps += steps * 2
-        if (node.data.position == DOWN) return Pair(steps - 1, totalSteps)
+        if (switch.position == DOWN) return Answer(steps - 1, totalSteps)
     }
 }
