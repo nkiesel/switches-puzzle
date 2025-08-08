@@ -1,55 +1,58 @@
+import Position.DOWN
+import Position.UP
 import kotlin.random.Random
 
 /**
  * Enum for the position of a switch.
  */
-enum class Position { UP, DOWN }
+enum class Position(private val c: String) {
+    UP("↑"), DOWN("↓");
 
-/**
- *  When the switch is part of a circle of switches passed to one of the solution functions, then
- *  the switch position can be updated, but the neighbors cannot be changed.
- *
- * Switch has 3 properties:
- *  @property position whether switch is UP or DOWN
- *  @property left the neighbor switch on the left side
- *  @property right the neighbor switch on the right side
- */
-class Switch(var position: Position = if (Random.nextBoolean()) UP else DOWN) {
-    private var frozenNeighbors = false
-
-    var left = this
-        set(value) {
-            // prevent solutions to change neighbors of the switch
-            check(!frozenNeighbors) { "Not allowed to change neighbors " }
-            field = value
-        }
-
-    var right = this
-        set(value) {
-            // prevent solutions to change neighbors of the switch
-            check(!frozenNeighbors) { "Not allowed to change neighbors " }
-            field = value
-        }
-
-    fun freezeNeighbors() {
-        frozenNeighbors = true
-    }
-
-    /**
-     * This inserts a switch into the switch circle to the right of the current switch.
-     */
-    fun addRight(other: Switch) {
-        other.right = right
-        other.left = this
-        other.right.left = other
-        right = other
-    }
-
-    override fun toString() = if (position == UP) "↑" else "↓"
+    override fun toString() = c
 }
 
 fun green(text: String) = "\u001B[32m$text\u001B[0m"
 fun red(text: String) = "\u001B[31m$text\u001B[0m"
+
+class Hallway(private val count: Int) {
+    private val initial = List(count) { if (Random.nextBoolean()) UP else DOWN }
+    private var pos: Int = 0
+    private var steps: Int = 0
+    private val switches = initial.toMutableList()
+
+    fun restore() {
+        pos = 0
+        steps = 0
+        switches.clear()
+        switches.addAll(initial)
+    }
+
+    override fun toString() = "$count switches: ${switches.joinToString("")}"
+
+    fun isUp() = switches[pos] == UP
+
+    fun isDown() = switches[pos] == DOWN
+
+    fun turnUp() {
+        switches[pos] = UP
+    }
+
+    fun turnDown() {
+        switches[pos] = DOWN
+    }
+
+    fun goRight(steps: Int = 1) {
+        pos = (pos + steps) % count
+        this.steps += steps
+    }
+
+    fun goLeft(steps: Int = 1) {
+        pos = (pos + count - steps % count) % count
+        this.steps += steps
+    }
+
+    fun steps() = steps
+}
 
 /**
  * Solutions for the switches puzzle.  Parameter for this is the number of switches in the circle.
@@ -58,51 +61,20 @@ fun main(args: Array<String>) {
     val count = args.firstOrNull()?.toIntOrNull() ?: 100
 
     // Create a circle of switches with random positions
-    val start = Switch()
-    repeat(count - 1) { start.addRight(Switch()) }
-    show(start, count)
+    val hallway = Hallway(count)
+    println(hallway)
 
     // Run solutions. Every solution should return the correct number of switches
     for (countSwitches in listOf(::primitive, ::basic, ::enhanced, ::bidirectional)) {
-        // We clone the switch circle for every solution because the solutions are allowed to toggle the switches,
+        val answer = countSwitches(hallway)
+        val status = if (answer == count) green("correct") else red("incorrect")
+        println("${countSwitches.name} is $status and took ${hallway.steps()} steps")
+        // We reset the switch circle after every solution because the solutions are allowed to toggle the switches,
         // but we want all solutions to start with the same position for every switch.
-        val answer = countSwitches(clone(start, count))
-        val status = if (answer.switches == count) green("correct") else red("incorrect")
-        println("${countSwitches.name} is $status and took ${answer.steps} steps")
+        hallway.restore()
     }
 }
 
-/**
- * This clones a switch circle and returns a frozen circle
- */
-fun clone(start: Switch, count: Int): Switch {
-    val first = Switch(start.position)
-    var orig = start.right
-    var next = first
-    repeat(count - 1) {
-        next.addRight(Switch(orig.position))
-        next = next.right
-        orig = orig.right
-    }
-    next = first
-    repeat(count) {
-        next.freezeNeighbors()
-        next = next.right
-    }
-    return first
-}
-
-fun show(start: Switch, count: Int) {
-    var switch = start
-    print("$count switches: ")
-    repeat(count) {
-        print(switch)
-        switch = switch.right
-    }
-    println()
-}
-
-data class Answer(val switches: Int, val steps: Int)
 
 /**
  * This turns the start switch up, and then goes to the right n steps and turns the switch down at that position.
@@ -111,24 +83,23 @@ data class Answer(val switches: Int, val steps: Int)
  * steps of the last "go right and then go back".  If not turned down, then repeat but now walk one step further
  * to the right.
  */
-fun primitive(start: Switch): Answer {
-    var switch = start
-    switch.position = UP
-    var totalSteps = 0
-    var switches = 0
-    while (true) {
-        switches++
-        var steps = 0
+private fun primitive(hallway: Hallway): Int {
+    with(hallway) {
+        turnUp()
+        var switches = 0
+        while (true) {
+            switches++
+            var steps = 0
 
-        do {
-            switch = switch.right
-            steps++
-        } while (steps < switches)
-        switch.position = DOWN
+            do {
+                goRight()
+                steps++
+            } while (steps < switches)
+            turnDown()
 
-        repeat(steps) { switch = switch.left }
-        totalSteps += steps * 2
-        if (switch.position == DOWN) return Answer(switches, totalSteps)
+            goLeft(steps)
+            if (isDown()) return switches
+        }
     }
 }
 
@@ -136,22 +107,21 @@ fun primitive(start: Switch): Answer {
  * Better than primitive: we only turn back once we reach a switch in the up position. This avoids walking back and
  * forward again when we didi not toggle a switch and thus have not completed the circle.
  */
-fun basic(start: Switch): Answer {
-    var switch = start
-    switch.position = UP
-    var totalSteps = 0
-    while (true) {
-        var steps = 0
+private fun basic(hallway: Hallway): Int {
+    with(hallway) {
+        turnUp()
+        while (true) {
+            var steps = 0
 
-        do {
-            switch = switch.right
-            steps++
-        } while (switch.position == DOWN)
-        switch.position = DOWN
+            do {
+                goRight()
+                steps++
+            } while (isDown())
+            turnDown()
 
-        repeat(steps) { switch = switch.left }
-        totalSteps += steps * 2
-        if (switch.position == DOWN) return Answer(steps, totalSteps)
+            goLeft(steps)
+            if (isDown()) return steps
+        }
     }
 }
 
@@ -161,27 +131,21 @@ fun basic(start: Switch): Answer {
  * down as long as they are in the UP position.  That again reduces the "walk right and walk all the way back" iterations
  * and thus reduces the total number of steps required before we find the correct answer.
  */
-fun enhanced(start: Switch): Answer {
-    var switch = start
-    switch.position = UP
-    var totalSteps = 0
-    while (true) {
-        var steps = 0
-        var toggle = false
+private fun enhanced(hallway: Hallway): Int {
+    with(hallway) {
+        turnUp()
         while (true) {
-            switch = switch.right
-            steps++
-            if (switch.position == DOWN) {
-                if (toggle) break
-            } else {
-                switch.position = DOWN
-                toggle = true
+            var steps = 0
+            var sawUp = false
+            while (true) {
+                goRight()
+                steps++
+                if (isUp()) turnDown().also { sawUp = true } else if (sawUp) break
             }
-        }
 
-        repeat(steps) { switch = switch.left }
-        totalSteps += steps * 2
-        if (switch.position == DOWN) return Answer(steps - 1, totalSteps)
+            goLeft(steps)
+            if (isDown()) return steps - 1
+        }
     }
 }
 
@@ -190,30 +154,34 @@ fun enhanced(start: Switch): Answer {
  * on which direction has likely fewer steps before finding the next switch in UP position.  This again reduces the total
  * number of steps required to find the correct answer.
  */
-fun bidirectional(start: Switch): Answer {
-    var switch = start
-    switch.position = UP
-    var totalSteps = 0
-    var leftDowns = 0
-    var rightDowns = 0
-    while (true) {
-        var steps = 0
-        var toggle = false
-        val walkRight = rightDowns <= leftDowns
+private fun bidirectional(hallway: Hallway): Int {
+    with(hallway) {
+        turnUp()
+        var leftDowns = 0
+        var rightDowns = 0
         while (true) {
-            switch = if (walkRight) switch.right else switch.left
-            steps++
-            if (switch.position == DOWN) {
-                if (toggle) break
-            } else {
-                switch.position = DOWN
-                toggle = true
+            var steps = 0
+            var toggle = false
+            val walkRight = rightDowns <= leftDowns
+            while (true) {
+                if (walkRight) goRight() else goLeft()
+                steps++
+                if (isDown()) {
+                    if (toggle) break
+                } else {
+                    turnDown()
+                    toggle = true
+                }
             }
-        }
 
-        repeat(steps) { switch = if (walkRight) switch.left else switch.right }
-        if (walkRight) rightDowns = steps else leftDowns = steps
-        totalSteps += steps * 2
-        if (switch.position == DOWN) return Answer(steps - 1, totalSteps)
+            if (walkRight) {
+                goLeft(steps)
+                rightDowns = steps
+            } else {
+                goRight(steps)
+                leftDowns = steps
+            }
+            if (isDown()) return steps - 1
+        }
     }
 }
