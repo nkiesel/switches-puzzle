@@ -3,8 +3,25 @@ import kotlin.random.Random
 enum class Position { UP, DOWN }
 
 class Switch(var position: Position = if (Random.nextBoolean()) UP else DOWN) {
+    private var frozenPosition = false
+
     var left = this
+        set(value) {
+            // prevent solutions to change neighbors of the switch
+            check(!frozenPosition) { "Not allowed to change neighbors "}
+            field = value
+        }
+
     var right = this
+        set(value) {
+            // prevent solutions to change neighbors of the switch
+            check(!frozenPosition) { "Not allowed to change neighbors "}
+            field = value
+        }
+
+    fun freezePosition() {
+        frozenPosition = true
+    }
 
     /**
      * This inserts a switch into the switch circle to the right of the current switch.
@@ -26,7 +43,7 @@ fun main(args: Array<String>) {
     repeat(count - 1) { start.addRight(Switch()) }
     show(start, count)
 
-    for (countSwitches in listOf(::basic, ::enhanced, ::bidirectional)) {
+    for (countSwitches in listOf(::primitive, ::basic, ::enhanced, ::bidirectional)) {
         // We clone the switch circle for every solution because the solutions are allowed to toggle the switches,
         // but we want all solutions to start with the same position for every switch.
         println("${countSwitches.name}: ${countSwitches(clone(start, count))}")
@@ -45,6 +62,11 @@ fun clone(start: Switch, count: Int): Switch {
         next = next.right
         orig = orig.right
     }
+    next = first
+    repeat(count) {
+        next.freezePosition()
+        next = next.right
+    }
     return first
 }
 
@@ -61,9 +83,30 @@ data class Answer(val switches: Int, val steps: Int) {
     override fun toString() = "$switches switches, took $steps steps"
 }
 
-fun basic(start: Switch): Answer {
-    start.position = UP
+fun primitive(start: Switch): Answer {
     var switch = start
+    switch.position = UP
+    var totalSteps = 0
+    var switches = 0
+    while (true) {
+        switches++
+        var steps = 0
+
+        do {
+            switch = switch.right
+            steps++
+        } while (steps < switches)
+        switch.position = DOWN
+
+        repeat(steps) { switch = switch.left }
+        totalSteps += steps * 2
+        if (switch.position == DOWN) return Answer(switches, totalSteps)
+    }
+}
+
+fun basic(start: Switch): Answer {
+    var switch = start
+    switch.position = UP
     var totalSteps = 0
     while (true) {
         var steps = 0
@@ -81,8 +124,8 @@ fun basic(start: Switch): Answer {
 }
 
 fun enhanced(start: Switch): Answer {
-    start.position = UP
     var switch = start
+    switch.position = UP
     var totalSteps = 0
     while (true) {
         var steps = 0
@@ -105,8 +148,8 @@ fun enhanced(start: Switch): Answer {
 }
 
 fun bidirectional(start: Switch): Answer {
-    start.position = UP
     var switch = start
+    switch.position = UP
     var totalSteps = 0
     var leftDowns = 0
     var rightDowns = 0
