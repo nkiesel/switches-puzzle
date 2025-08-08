@@ -1,26 +1,38 @@
 import kotlin.random.Random
 
+/**
+ * Enum for the position of a switch.
+ */
 enum class Position { UP, DOWN }
 
+/**
+ *  When the switch is part of a circle of switches passed to one of the solution functions, then
+ *  the switch position can be updated, but the neighbors cannot be changed.
+ *
+ * Switch has 3 properties:
+ *  @property position whether switch is UP or DOWN
+ *  @property left the neighbor switch on the left side
+ *  @property right the neighbor switch on the right side
+ */
 class Switch(var position: Position = if (Random.nextBoolean()) UP else DOWN) {
-    private var frozenPosition = false
+    private var frozenNeighbors = false
 
     var left = this
         set(value) {
             // prevent solutions to change neighbors of the switch
-            check(!frozenPosition) { "Not allowed to change neighbors "}
+            check(!frozenNeighbors) { "Not allowed to change neighbors " }
             field = value
         }
 
     var right = this
         set(value) {
             // prevent solutions to change neighbors of the switch
-            check(!frozenPosition) { "Not allowed to change neighbors "}
+            check(!frozenNeighbors) { "Not allowed to change neighbors " }
             field = value
         }
 
-    fun freezePosition() {
-        frozenPosition = true
+    fun freezeNeighbors() {
+        frozenNeighbors = true
     }
 
     /**
@@ -36,22 +48,32 @@ class Switch(var position: Position = if (Random.nextBoolean()) UP else DOWN) {
     override fun toString() = if (position == UP) "↑" else "↓"
 }
 
+fun green(text: String) = "\u001B[32m$text\u001B[0m"
+fun red(text: String) = "\u001B[31m$text\u001B[0m"
+
+/**
+ * Solutions for the switches puzzle.  Parameter for this is the number of switches in the circle.
+ */
 fun main(args: Array<String>) {
     val count = args.firstOrNull()?.toIntOrNull() ?: 100
 
+    // Create a circle of switches with random positions
     val start = Switch()
     repeat(count - 1) { start.addRight(Switch()) }
     show(start, count)
 
+    // Run solutions. Every solution should return the correct number of switches
     for (countSwitches in listOf(::primitive, ::basic, ::enhanced, ::bidirectional)) {
         // We clone the switch circle for every solution because the solutions are allowed to toggle the switches,
         // but we want all solutions to start with the same position for every switch.
-        println("${countSwitches.name}: ${countSwitches(clone(start, count))}")
+        val answer = countSwitches(clone(start, count))
+        val status = if (answer.switches == count) green("correct") else red("incorrect")
+        println("${countSwitches.name} is $status and took ${answer.steps} steps")
     }
 }
 
 /**
- * This clones a switch circle
+ * This clones a switch circle and returns a frozen circle
  */
 fun clone(start: Switch, count: Int): Switch {
     val first = Switch(start.position)
@@ -64,7 +86,7 @@ fun clone(start: Switch, count: Int): Switch {
     }
     next = first
     repeat(count) {
-        next.freezePosition()
+        next.freezeNeighbors()
         next = next.right
     }
     return first
@@ -72,6 +94,7 @@ fun clone(start: Switch, count: Int): Switch {
 
 fun show(start: Switch, count: Int) {
     var switch = start
+    print("$count switches: ")
     repeat(count) {
         print(switch)
         switch = switch.right
@@ -79,10 +102,15 @@ fun show(start: Switch, count: Int) {
     println()
 }
 
-data class Answer(val switches: Int, val steps: Int) {
-    override fun toString() = "$switches switches, took $steps steps"
-}
+data class Answer(val switches: Int, val steps: Int)
 
+/**
+ * This turns the start switch up, and then goes to the right n steps and turns the switch down at that position.
+ * Then it walks back the same number of steps so that it arrives again at the start switch. If that is now turned
+ * down, then the last toggle toggled the start switch, and thus the number of switches is identical to the number of
+ * steps of the last "go right and then go back".  If not turned down, then repeat but now walk one step further
+ * to the right.
+ */
 fun primitive(start: Switch): Answer {
     var switch = start
     switch.position = UP
@@ -104,6 +132,10 @@ fun primitive(start: Switch): Answer {
     }
 }
 
+/**
+ * Better than primitive: we only turn back once we reach a switch in the up position. This avoids walking back and
+ * forward again when we didi not toggle a switch and thus have not completed the circle.
+ */
 fun basic(start: Switch): Answer {
     var switch = start
     switch.position = UP
@@ -123,6 +155,12 @@ fun basic(start: Switch): Answer {
     }
 }
 
+/**
+ * Even better than basic: We know that the switch to the right of our start switch is turned down. Thus, when we
+ * arrive at a switch in UP position, we turn it down but nevertheless walk further to the right and turn all switches
+ * down as long as they are in the UP position.  That again reduces the "walk right and walk all the way back" iterations
+ * and thus reduces the total number of steps required before we find the correct answer.
+ */
 fun enhanced(start: Switch): Answer {
     var switch = start
     switch.position = UP
@@ -147,6 +185,11 @@ fun enhanced(start: Switch): Answer {
     }
 }
 
+/**
+ * This does the same as enhanced, but instead of always walking right, we walk either to the right or to the left based
+ * on which direction has likely fewer steps before finding the next switch in UP position.  This again reduces the total
+ * number of steps required to find the correct answer.
+ */
 fun bidirectional(start: Switch): Answer {
     var switch = start
     switch.position = UP
